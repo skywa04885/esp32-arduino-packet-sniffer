@@ -2,7 +2,19 @@
 #include <LoRa.h>
 
 #include <esp_wifi.h>
+#include <esp_log.h>
 #include <nvs_flash.h>
+#include <esp_task_wdt.h>
+#include "soc/timer_group_struct.h"
+#include "soc/timer_group_reg.h"
+
+#define SCK     5
+#define MISO    19
+#define MOSI    27
+#define SS      18
+#define RST     14
+#define DI0     26
+#define BAND    868E6
 
 /**************************************************************
  * ieee80211.c
@@ -242,7 +254,12 @@ static wifi_promiscuous_filter_t g_PromiscFilter = {
   .filter_mask = WIFI_PROMIS_FILTER_MASK_ALL
 };
 
+static uint8_t channel = 1, n = 0;
+
+#define LORA_TRANSMIT_MEASUREMENTS_TAG "TransmitMeasurements"
 void lora_transmit_measurements() {
+  esp_wifi_set_promiscuous(false);
+
   // Starts looping over the measurement, and transmitting them
   //  over lora, while keeping track of the max packet size
   size_t packetSize = 0, packetMeasurementCount = 0;
@@ -250,6 +267,7 @@ void lora_transmit_measurements() {
     if (packetSize == 0) {
       LoRa.beginPacket();
       packetSize += LoRa.print("CBX_LPKT{");
+      Serial.println("Begin packet");
     } else if (packetSize < 210) { // -> Append next measurement
       uint64_t mac = 0;
       for (uint8_t i = 0; i < 6; ++i) {
@@ -258,21 +276,41 @@ void lora_transmit_measurements() {
       }
 
       const char *fmt = ":%lu";
-      if (packetMeasurementCount == 0) fmt = "%lu";
+      if (packetMeasurementCount++ == 0) fmt = "%lu";
       packetSize += LoRa.printf(fmt, mac);
+      Serial.println("Data");
     } else { // -> Finish packet
       LoRa.print("}\n");
       LoRa.endPacket();
       packetSize = packetMeasurementCount = 0;
+      Serial.println("End packet");
     }
+  }
+
+  if (packetMeasurementCount > 0) {
+    LoRa.print("}\n");
+    LoRa.endPacket();
+    packetSize = packetMeasurementCount = 0;
+    Serial.println("End packet");
   }
 
   // Clears the list of measurements
   g_MeasurementCounter = 0;
+  esp_wifi_set_promiscuous(true);
 }
 
 void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
-  ieee80211_log_packet(buffer, type);
+  if (++n > 20) {
+    n = 0;
+
+    if (channel == 1) channel = 6;
+    else if (channel = 6) channel = 11;
+    else channel = 1;
+
+    esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+  }
+
+  // ieee80211_log_packet(buffer, type);
 
   /* Gets the required information for the current measurement */
   measurement_t m;
@@ -297,10 +335,10 @@ void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
     default: break;
   }
 
-  /* Stores the measurement in the list of measurements, if full we will
-   * start the transmission */
+  // /* Stores the measurement in the list of measurements, if full we will
+  //  * start the transmission */
   g_Measurements[g_MeasurementCounter++] = m;
-  if (g_MeasurementCounter >= sizeof (g_Measurements))
+  if (g_MeasurementCounter >= 16)
     lora_transmit_measurements();
 }
 
@@ -308,7 +346,7 @@ void setup() {
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   
   /* Inits serial */
-  Serial.begin(115200);
+  Serial.begin(38400);
 
   /* Inits NVS */
   esp_err_t err = nvs_flash_init();
@@ -322,6 +360,7 @@ void setup() {
   esp_wifi_init(&cfg);
   esp_wifi_set_storage(WIFI_STORAGE_RAM);
   esp_wifi_set_mode(WIFI_MODE_NULL);
+  esp_wifi_start();
 
   /* Sets promiscous mode */
   esp_wifi_set_promiscuous(true);
@@ -329,21 +368,16 @@ void setup() {
   esp_wifi_set_promiscuous_rx_cb(&promisc_packet_cb);
 
   /* Initializes LoRa */
-  if (!LoRa.begin(915E6)) {
+  SPI.begin(SCK,MISO,MOSI,SS);
+  LoRa.setPins(SS,RST,DI0);
+  if (!LoRa.begin(BAND)) {
     Serial.println("LoRa.begin() failed");
     for (;;);
   }
+
+  Serial.println("LoRa.begin() succeeded");
 }
 
 void loop() {
-  uint8_t channel = 1;
-
-  while (true) {
-    if (channel == 1) channel = 6;
-    else if (channel = 6) channel = 11;
-    else channel = 1;
-
-    esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-    delay(20);
-  }
+  delay(10000);
 }
