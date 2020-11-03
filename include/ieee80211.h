@@ -1,3 +1,7 @@
+/*
+  Copyright Cybox 2020 - Written by Luke A.C.A. Rieff
+*/
+
 #ifndef _IEEE80211_H
 #define _IEEE80211_H
 

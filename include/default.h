@@ -1,3 +1,7 @@
+/*
+  Copyright Cybox 2020 - Written by Luke A.C.A. Rieff
+*/
+
 #ifndef _INCLUDE_DEFAULT_H
 #define _INCLUDE_DEFAULT_H
 

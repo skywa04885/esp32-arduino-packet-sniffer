@@ -1,3 +1,7 @@
+/*
+  Copyright Cybox 2020 - Written by Luke A.C.A. Rieff
+*/
+
 #ifndef _MAIN_TRANSMITTER_H
 #define _MAIN_TRANSMITTER_H
 
