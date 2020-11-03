@@ -1,317 +1,88 @@
-#include <Arduino.h>
-#include <LoRa.h>
+#include "main.h"
 
-#include <esp_wifi.h>
-#include <esp_log.h>
-#include <nvs_flash.h>
-#include <esp_task_wdt.h>
-#include "soc/timer_group_struct.h"
-#include "soc/timer_group_reg.h"
-
-#define SCK     5
-#define MISO    19
-#define MOSI    27
-#define SS      18
-#define RST     14
-#define DI0     26
-#define BAND    868E6
-
-/**************************************************************
- * ieee80211.c
- **************************************************************/
-
-typedef enum {
-  WIFI_CF_MGMT,
-  WIFI_CF_CONTROL,
-  WIFI_CF_DATA,
-  WIFI_CF_EXT
-} ieee80211_control_frame_type_t;
-
-typedef enum {
-  WIFI_ASSOC_REQ,
-  WIFI_ASSOC_RES,
-  WIFI_REASSOC_REQ,
-  WIFI_REASSOC_RES,
-  WIFI_PROBE_REQ,
-  WIFI_PROBE_RES,
-  __WIFI_RESERVED0,
-  __WIFI_RESERVED1,
-  WIFI_BEACON,
-  WIFI_ATIM,
-  WIFI_DISASSOC,
-  WIFI_AUTH,
-  WIFI_DEAUTH,
-  WIFI_ACTION,
-  WIFI_ACTION_NO_ACK
-} ieee80211_control_mgmt_subtype_t;
-
-typedef enum {
-  __WIFI_RESERVED2,
-  __WIFI_RESERVED3,
-  WIFI_TRIGGER,
-  WIFI_REPORT_POLL,
-  WIFI_NDP_ANNOUNCE,
-  WIFI_CONTROL_FRAME_EXTENSION,
-  WIFI_CONTROL_WRAPPER,
-  WIFI_BLOCK_ACK_REQUEST,
-  WIFI_BLOCK_ACK,
-  WIFI_PS_POLL,
-  WIFI_RTS,
-  WIFI_CTS,
-  WIFI_ACK,
-  WIFI_CF_END,
-  WIFI_CF_END__CF_ACK
-} ieee80211_control_ctr_subtype_t;
-
-typedef struct __attribute__ ((packed)) {
-  unsigned protocol : 2;
-  unsigned type : 2;
-  unsigned subtype : 4;
-  unsigned to_ds : 1;
-  unsigned from_ds : 1;
-  unsigned more_frag : 1;
-  unsigned retry : 1;
-  unsigned pwr_mgmt : 1;
-  unsigned more_data : 1;
-  unsigned protected_frame : 1;
-  unsigned order : 1;
-} ieee80211_control_frame_t;
-
-typedef struct __attribute__ ((packed)) {
-  ieee80211_control_frame_t cf;
-  uint16_t duration;
-  uint8_t address1[6];
-  uint8_t address2[6];
-  uint8_t address3[6];
-  uint16_t seq_ctl;
-  uint8_t address4[6];
-} ieee80211_data_mac_header_t;
-
-typedef struct __attribute__ ((packed)) {
-  ieee80211_data_mac_header_t hdr;
-  char payload[0];
-} ieee80211_data_packet_t;
-
-typedef struct __attribute__ ((packed)) {
-  ieee80211_control_frame_t cf;
-  uint16_t duration;
-  uint8_t destination[6];
-  uint8_t transmitter[6];
-  uint8_t bssid[6];
-  uint16_t seq_ctl;
-} ieee80211_management_mac_header_t;
-
-typedef struct __attribute__ ((packed)) {
-  ieee80211_management_mac_header_t hdr;
-  char payload[0];
-} ieee80211_management_packet_t;
-
-typedef struct __attribute__ ((packed)) {
-  uint8_t timestamp[8];
-  uint16_t interval;
-  uint16_t capability;
-  uint8_t tag_number;
-  uint8_t tag_length;
-  char ssid[0];
-} ieee80211_management_beacon_var_t;
-
-typedef struct __attribute__ ((packed)) {
-  ieee80211_control_frame_t cf;
-  uint16_t duration;
-  uint8_t destination[6];
-  uint8_t transmitter[6];
-} ieee80211_control_mac_header_t;
-
-void ieee80211_mac_to_string(char *out, uint8_t *in) {
-  sprintf(out, "%02x:%02x:%02x:%02x:%02x:%02x", in[0], in[1], in[2], in[3], in[4], in[5]);
-}
-
-const char *ieee80211_get_type_string(wifi_promiscuous_pkt_type_t type) {
-  switch (type) {
-    case WIFI_CF_MGMT: return "MGMT";
-    case WIFI_CF_DATA: return "DATA";
-    case WIFI_CF_CONTROL: return "CONTROL";
-    default: return "Invalid/Ext";
-  }
-}
-
-const char *ieee80211_get_mgmt_subtype_string(ieee80211_control_mgmt_subtype_t type) {
-  switch (type) {
-    case WIFI_ASSOC_REQ: return "MGMT: AssocReq";
-    case WIFI_ASSOC_RES: return "MGMT: AssocRes";
-    case WIFI_REASSOC_REQ: return "MGMT: ReassocReq";
-    case WIFI_REASSOC_RES: return "MGMT: ReassocRes";
-    case WIFI_PROBE_REQ: return "MGMT: ProbeReq";
-    case WIFI_PROBE_RES: return "MGMT: ProbeRes";
-    case WIFI_BEACON: return "MGMT: Beacon";
-    case WIFI_ATIM: return "MGMT: ATIM";
-    case WIFI_DISASSOC: return "MGMT: DisAssoc";
-    case WIFI_AUTH: return "MGMT: Auth";
-    case WIFI_DEAUTH: return "MGMT: DeAuth";
-    case WIFI_ACTION: return "MGMT: Action";
-    case WIFI_ACTION_NO_ACK: return "MGMT: Action NoAck";
-    default: return "MGMT: Invalid/Ext";
-  }
-}
-
-const char *ieee80211_get_ctrl_subtype_string(ieee80211_control_ctr_subtype_t type) {
-  switch (type) {
-    case WIFI_TRIGGER: return "CTRL: Trigger";
-    case WIFI_REPORT_POLL: return "CTRL: ReportPoll";
-    case WIFI_NDP_ANNOUNCE: return "CTRL: Announce";
-    case WIFI_CONTROL_FRAME_EXTENSION: return "CTRL: CTRLExt";
-    case WIFI_CONTROL_WRAPPER: return "CTRL: CTRLWrapper";
-    case WIFI_BLOCK_ACK_REQUEST: return "CTRL: BlockAckReq";
-    case WIFI_BLOCK_ACK: return "CTRL: BlockAck";
-    case WIFI_PS_POLL: return "CTRL: PSPoll";
-    case WIFI_RTS: return "CTRL: RTS";
-    case WIFI_CTS: return "CTRL: CTS";
-    case WIFI_ACK: return "CTRL: ACK";
-    case WIFI_CF_END: return "CTRL: CFEnd";
-    case WIFI_CF_END__CF_ACK: return "CTRL: CFEnd&CFAck";
-    default: return "CTRL: Invalid/ext";
-  }
-}
-
-void ieee80211_log_packet(void *buffer, wifi_promiscuous_pkt_type_t type) {
-  wifi_promiscuous_pkt_t *promisc_pkt = (wifi_promiscuous_pkt_t *) buffer;
-  ieee80211_control_frame_t *cf = (ieee80211_control_frame_t *) promisc_pkt->payload;
-
-  char pkt_destination_mac[] = {"00:00:00:00:00:00\0"};
-  char pkt_transmitter_mac[] = {"00:00:00:00:00:00\0"};
-  char pkt_data[32] = {'\0'};
-  const char *label = ieee80211_get_type_string(type);
-
-  // Switches the type, so we can parse the packet with the correct stucture
-  //  and read the required data from it
-  switch (type) {
-    // ======================
-    case WIFI_CF_MGMT: {
-      ieee80211_management_packet_t *pkt = (ieee80211_management_packet_t *) promisc_pkt->payload;
-      label = ieee80211_get_mgmt_subtype_string(static_cast<ieee80211_control_mgmt_subtype_t>(cf->subtype));
-
-      // Turns the mac addresses in the management frame to strings,
-      //  so we can log them to the console later on
-      ieee80211_mac_to_string(pkt_transmitter_mac, pkt->hdr.transmitter);
-      ieee80211_mac_to_string(pkt_destination_mac, pkt->hdr.destination);
-
-      // Switches the subtype, to check if we can get any data from the packet
-      //  since not all contain data
-      switch (cf->subtype) {
-        case WIFI_BEACON: case WIFI_PROBE_RES: {
-          ieee80211_management_beacon_var_t *var = (ieee80211_management_beacon_var_t *) pkt->payload;
-
-          if (var->tag_length > 31) strncpy(pkt_data, var->ssid, 31);
-          else strncpy(pkt_data, var->ssid, var->tag_length);
-          break;
-        }
-        default: break;
-      }
-      break;
-    }
-    // ======================
-    case WIFI_CF_CONTROL: {
-      ieee80211_control_mac_header_t *hdr = (ieee80211_control_mac_header_t *) promisc_pkt->payload;
-      label = ieee80211_get_ctrl_subtype_string(static_cast<ieee80211_control_ctr_subtype_t>(cf->subtype));
-      ieee80211_mac_to_string(pkt_transmitter_mac, hdr->destination);
-      ieee80211_mac_to_string(pkt_destination_mac, hdr->transmitter);
-      break;
-    }
-    // ======================
-    case WIFI_CF_DATA: {
-      ieee80211_data_packet_t *pkt = (ieee80211_data_packet_t *) promisc_pkt->payload;
-      ieee80211_mac_to_string(pkt_transmitter_mac, pkt->hdr.address2);
-      ieee80211_mac_to_string(pkt_destination_mac, pkt->hdr.address1);
-      break;
-    }
-    // ======================
-    case WIFI_CF_EXT: {
-      break;
-    }
-    // ======================
-    default: break;
-  }
-
-  // Prints the packet to the serial console, of course this happens in a decently
-  //  formatted way: [ channel, size, transmitter, destination, type, freq, rssi ]
-  Serial.printf("%-2u | %-5u | %s | %s | %-20s | %-3d DBM | '%s'\n", promisc_pkt->rx_ctrl.channel, promisc_pkt->rx_ctrl.sig_len, 
-    pkt_transmitter_mac, pkt_destination_mac, label,
-    promisc_pkt->rx_ctrl.rssi, pkt_data);;
-}
-
-/**************************************************************
- * main.c
- **************************************************************/
-
-typedef struct {
-  uint8_t mac[6];
-} measurement_t;
-
-static measurement_t g_Measurements[16];
+static measurement_t g_Measurements[GLOBAL_MEASUREMENT_BUFFER_SIZE];
 static size_t g_MeasurementCounter = 0;
 
 static wifi_promiscuous_filter_t g_PromiscFilter = {
-  .filter_mask = WIFI_PROMIS_FILTER_MASK_ALL
+  .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
 };
 
-static uint8_t channel = 1, n = 0;
+static uint8_t channel = 1;
+static bool transmitting = false;
 
 #define LORA_TRANSMIT_MEASUREMENTS_TAG "TransmitMeasurements"
 void lora_transmit_measurements() {
-  esp_wifi_set_promiscuous(false);
-
-  // Starts looping over the measurement, and transmitting them
-  //  over lora, while keeping track of the max packet size
-  size_t packetSize = 0, packetMeasurementCount = 0;
-  for (measurement_t m : g_Measurements) {
-    if (packetSize == 0) {
-      LoRa.beginPacket();
-      packetSize += LoRa.print("CBX_LPKT{");
-      Serial.println("Begin packet");
-    } else if (packetSize < 210) { // -> Append next measurement
-      uint64_t mac = 0;
-      for (uint8_t i = 0; i < 6; ++i) {
-        if (i != 0) mac <<= 8;
-        mac |= (uint64_t) m.mac[i];
-      }
-
-      const char *fmt = ":%lu";
-      if (packetMeasurementCount++ == 0) fmt = "%lu";
-      packetSize += LoRa.printf(fmt, mac);
-      Serial.println("Data");
-    } else { // -> Finish packet
-      LoRa.print("}\n");
-      LoRa.endPacket();
-      packetSize = packetMeasurementCount = 0;
-      Serial.println("End packet");
+  /* Defines the paykoad buffer, and the packet with the default
+   * packet values .. */
+  uint8_t payload_buffer[128];
+  cbx_pkt_t packet = {
+    .hdr = {
+      .label = { 'C', 'B', 'X', 'L' },
+      .sender = DEVICE_MAC,
+      .receiver = GATEWAY_MAC,
+      .chain_no = 0,
+      .flags = {
+        .encrypted = 0x1,
+        .relayed = 0x0,
+        .chained = 0x0
+      },
+    },
+    .body = {
+      .unique_id = 0x00000000,
+      .size = 0,
+      .payload = payload_buffer
     }
+  };
+
+  /* Defines the anonymous function which will transfer the current
+   * packet over LoRa */
+  bool first_packet = true; /* If the current transmitted packet is the first */
+  auto transmit_packet = [&]() {
+    /* Checks if it is the first packet, if so just transmit, else we will
+      * increment the chain id and set the chain flag */
+    if (!first_packet) {
+      Serial.printf("Writing chained packet, with payload size of: %d\n", packet.body.size);
+    
+      /* Sets chained to true, and increments the chain ID */ 
+      packet.hdr.flags.chained = 0x1;
+      ++packet.hdr.chain_no;
+    } else {
+      Serial.printf("Writing non-chained packet, with payload size of: %d\n", packet.body.size);
+      first_packet = false;
+    }
+
+    /* Transmits the packet over lora, after which we reset
+      * the body size, in order to continue with the next elements */
+    cbx_pkt_log(&packet);
+    cbx_pkt_transmit(&packet);
+    packet.body.size = 0;
+  };
+  
+  /* Starts looping over all the measurements, and sending the packets
+   * with the corrent payload */
+  for (uint8_t i = 0; i < g_MeasurementCounter; ++i) {
+    const measurement_t *m = &g_Measurements[i];
+
+    /* Checks if the current measurement fits into the
+     * payload of the packet, if not transmit it first */
+    if ((packet.body.size + sizeof (measurement_t)) > sizeof (payload_buffer))
+      transmit_packet();
+
+    /* Copies the measurement into the payload buffer, after which we append
+     * an new measurement to the total size of the packet */
+    memcpy(&payload_buffer[packet.body.size], m, sizeof (measurement_t));
+    packet.body.size += sizeof (measurement_t);
   }
 
-  if (packetMeasurementCount > 0) {
-    LoRa.print("}\n");
-    LoRa.endPacket();
-    packetSize = packetMeasurementCount = 0;
-    Serial.println("End packet");
-  }
-
-  // Clears the list of measurements
-  g_MeasurementCounter = 0;
-  esp_wifi_set_promiscuous(true);
+  /* Checks if there is any data left to be transmitted, if so
+   * transmit it */
+  if (packet.body.size > 0)
+    transmit_packet();
 }
 
 void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
-  if (++n > 20) {
-    n = 0;
-
-    if (channel == 1) channel = 6;
-    else if (channel = 6) channel = 11;
-    else channel = 1;
-
-    esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-  }
-
-  // ieee80211_log_packet(buffer, type);
-
+  if (transmitting) return;
+  
   /* Gets the required information for the current measurement */
   measurement_t m;
   wifi_promiscuous_pkt_t *promisc_pkt = (wifi_promiscuous_pkt_t *) buffer;
@@ -335,11 +106,30 @@ void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
     default: break;
   }
 
-  // /* Stores the measurement in the list of measurements, if full we will
-  //  * start the transmission */
+  /* Stores the measurement in the list of measurements, if full we will
+   * start the transmission */
+  for (uint16_t i = 0; i < g_MeasurementCounter; ++i) {
+    measurement_t *mi = &g_Measurements[i];
+    if (mi->mac[0] != m.mac[0]) continue;
+    else if (mi->mac[1] != m.mac[1]) continue;
+    else if (mi->mac[2] != m.mac[2]) continue;
+    else if (mi->mac[3] != m.mac[3]) continue;
+    else if (mi->mac[4] != m.mac[4]) continue;
+    else if (mi->mac[5] != m.mac[5]) continue;
+    else return;
+  }
+
+  char mac[] = {"00:00:00:00:00:00\0"};
+  ieee80211_mac_to_string(mac, m.mac);
+  Serial.printf("Unique mac: %s\n", mac);
+  
   g_Measurements[g_MeasurementCounter++] = m;
-  if (g_MeasurementCounter >= 16)
+  if (g_MeasurementCounter >= GLOBAL_MEASUREMENT_BUFFER_SIZE) {
+    transmitting = true;
     lora_transmit_measurements();
+    g_MeasurementCounter = 0;
+    transmitting = false;
+  }
 }
 
 void setup() {
@@ -379,5 +169,8 @@ void setup() {
 }
 
 void loop() {
-  delay(10000);
+  if (channel > 11) channel = 1;
+  else ++channel;
+  esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
+  delay(10);
 }
