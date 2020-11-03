@@ -1,16 +1,34 @@
-#include "main.h"
+#include "main_transmitter.h"
 
+#ifndef COMPILE_AS_RECEIVER
+
+/*******************************
+ * Global variables
+ ******************************/
+
+/* Will be used to keep track of the measurements inside the program
+ * the size is used to detect overflow and trigger transmission */
 static measurement_t g_Measurements[GLOBAL_MEASUREMENT_BUFFER_SIZE];
 static size_t g_MeasurementCounter = 0;
 
+/* The filter which will be applied to the promiscous wifi mode
+ * this will only allow management frames */
 static wifi_promiscuous_filter_t g_PromiscFilter = {
   .filter_mask = WIFI_PROMIS_FILTER_MASK_MGMT
 };
 
+/* The channel is used for channel switching, while the transmitting boolean
+ * indicates if we should ignore packets at that moment  */
 static uint8_t channel = 1;
 static bool transmitting = false;
 
-#define LORA_TRANSMIT_MEASUREMENTS_TAG "TransmitMeasurements"
+/*******************************
+ * Functions
+ ******************************/
+
+/**
+ * Transmits the measurements currently buffered
+ */
 void lora_transmit_measurements() {
   /* Defines the paykoad buffer, and the packet with the default
    * packet values .. */
@@ -41,13 +59,13 @@ void lora_transmit_measurements() {
     /* Checks if it is the first packet, if so just transmit, else we will
       * increment the chain id and set the chain flag */
     if (!first_packet) {
-      Serial.printf("Writing chained packet, with payload size of: %d\n", packet.body.size);
+      Serial.printf("Writing chained packet, with payload size of: %d\r\n", packet.body.size);
     
       /* Sets chained to true, and increments the chain ID */ 
       packet.hdr.flags.chained = 0x1;
       ++packet.hdr.chain_no;
     } else {
-      Serial.printf("Writing non-chained packet, with payload size of: %d\n", packet.body.size);
+      Serial.printf("Writing non-chained packet, with payload size of: %d\r\n", packet.body.size);
       first_packet = false;
     }
 
@@ -80,6 +98,12 @@ void lora_transmit_measurements() {
     transmit_packet();
 }
 
+/**
+ * The callback for incomming promiscous packets
+ * 
+ * @param buffer the buffer which contains the data of the packet
+ * @param type the type of packet
+ */
 void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
   if (transmitting) return;
   
@@ -121,7 +145,7 @@ void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
 
   char mac[] = {"00:00:00:00:00:00\0"};
   ieee80211_mac_to_string(mac, m.mac);
-  Serial.printf("Unique mac: %s\n", mac);
+  Serial.printf("Unique mac: %s\r\n", mac);
   
   g_Measurements[g_MeasurementCounter++] = m;
   if (g_MeasurementCounter >= GLOBAL_MEASUREMENT_BUFFER_SIZE) {
@@ -132,11 +156,14 @@ void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
   }
 }
 
+/**
+  * Performs all the initialization code
+ */
 void setup() {
   wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
   
   /* Inits serial */
-  Serial.begin(38400);
+  Serial.begin(GLOBAL_USART_BAUD);
 
   /* Inits NVS */
   esp_err_t err = nvs_flash_init();
@@ -168,9 +195,14 @@ void setup() {
   Serial.println("LoRa.begin() succeeded");
 }
 
+/**
+ * Switches the channels
+ */
 void loop() {
   if (channel > 11) channel = 1;
   else ++channel;
   esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);
-  delay(10);
+  delay(GLOBAL_CHANNEL_SWITCH_DELAY);
 }
+
+#endif

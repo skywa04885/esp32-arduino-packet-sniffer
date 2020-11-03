@@ -1,10 +1,20 @@
 #include "ieee80211.h"
 
-
+/**
+ * Turns an mac address into it's string representation
+ * 
+ * @param out the output buffer
+ * @param in the input mac (6 bytes)
+ */
 void ieee80211_mac_to_string(char *out, const uint8_t *in) {
   sprintf(out, "%02x:%02x:%02x:%02x:%02x:%02x", in[0], in[1], in[2], in[3], in[4], in[5]);
 }
 
+/**
+ * Gets the string version of ethernet frame type
+ * 
+ * @param type the type number
+ */
 const char *ieee80211_get_type_string(wifi_promiscuous_pkt_type_t type) {
   switch (type) {
     case WIFI_CF_MGMT: return "MGMT";
@@ -14,6 +24,11 @@ const char *ieee80211_get_type_string(wifi_promiscuous_pkt_type_t type) {
   }
 }
 
+/**
+ * Gets the string version of an management frame subtype
+ * 
+ * @param type the type to be converted
+ */
 const char *ieee80211_get_mgmt_subtype_string(ieee80211_control_mgmt_subtype_t type) {
   switch (type) {
     case WIFI_ASSOC_REQ: return "MGMT: AssocReq";
@@ -33,6 +48,11 @@ const char *ieee80211_get_mgmt_subtype_string(ieee80211_control_mgmt_subtype_t t
   }
 }
 
+/**
+ * Gets the string version of an control frame subtype
+ * 
+ * @param type the type number
+ */
 const char *ieee80211_get_ctrl_subtype_string(ieee80211_control_ctr_subtype_t type) {
   switch (type) {
     case WIFI_TRIGGER: return "CTRL: Trigger";
@@ -52,6 +72,14 @@ const char *ieee80211_get_ctrl_subtype_string(ieee80211_control_ctr_subtype_t ty
   }
 }
 
+/**
+ * Logs an IEEE80211 frame to the USART line, this is used directly
+ *  in the callback of an promiscous wifi mode
+ * 
+ * @param buffer the input data buffer of frame
+ * @param type the type of the frame
+ */
+void ieee80211_log_packet(void *buffer, wifi_promiscuous_pkt_type_t type);
 void ieee80211_log_packet(void *buffer, wifi_promiscuous_pkt_type_t type) {
   wifi_promiscuous_pkt_t *promisc_pkt = (wifi_promiscuous_pkt_t *) buffer;
   ieee80211_control_frame_t *cf = (ieee80211_control_frame_t *) promisc_pkt->payload;

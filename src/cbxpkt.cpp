@@ -1,40 +1,49 @@
 #include "cbxpkt.h"
 
+/**
+ * Logs packet details over the USART line
+ * 
+ * @param pkt the packet to be logged
+ */
 void cbx_pkt_log(const cbx_pkt_t *pkt) {
-  char mac_tmp[] = {"00:00:00:00:00:00\0"};
+  char sender[] = {"00:00:00:00:00:00\0"};
+  char receiver[] = {"00:00:00:00:00:00\0"};
 
-  Serial.println("cbx_pkt_t {");
+  /* Convers the addresses to strings */
+  ieee80211_mac_to_string(receiver, pkt->hdr.receiver);
+  ieee80211_mac_to_string(sender, pkt->hdr.sender);
 
-  /* Prints the header of the CBX PKT */
-  Serial.println("\tHeader: {");
-  Serial.printf("\t\tLabel: %c%c%c%c\n", pkt->hdr.label[0], 
-    pkt->hdr.label[1], pkt->hdr.label[2], pkt->hdr.label[3]);
-
-  ieee80211_mac_to_string(mac_tmp, pkt->hdr.sender);
-  Serial.printf("\t\tSender: %s\n", mac_tmp);
-  ieee80211_mac_to_string(mac_tmp, pkt->hdr.receiver);
-  Serial.printf("\t\tReceiver: %s\n", mac_tmp);
-  
-  Serial.printf("\t\tChain no: %d\n", pkt->hdr.chain_no);
-  Serial.printf("\t\tFlags: %02X\n", pkt->hdr.flags);
-  Serial.println("\t}");
-
-  /* Prints the body of the CBX packet */
-  Serial.println("\tBody: {");
-
-  Serial.printf("\t\tUnique ID: %d\n", pkt->body.unique_id);
-  Serial.printf("\t\tSize: %d\n", pkt->body.size);
-  Serial.printf("\t\tBody: ");
-
-  for (uint8_t i = 0; i < pkt->body.size; ++i) {
-    if (i > 0) Serial.write('-');
-    Serial.printf("%02X", pkt->body.payload[i]);
-  }
-
-  Serial.println("\n\t}");
-  Serial.println("}");
+  /* Prints the basic packet information */
+  uint32_t flags = 0x0;
+  memcpy(&flags, &pkt->hdr.flags, 1);
+  Serial.printf(
+    "cbx_pkt_t {\r\n"
+    "\tHeader {\r\n"
+    "\t\tLabel: %c%c%c%c\r\n"
+    "\t\tSender: %s\r\n"
+    "\t\tReceiver: %s\r\n"
+    "\t\tChain no: %d\r\n"
+    "\t\tFlags: %02X\r\n"
+    "\t}\r\n"
+    "\tBody {\r\n"
+    "\t\tSize: %d\r\n"
+    "\t}\r\n"
+    "}\r\n"
+    , // ==========================================
+    pkt->hdr.label[0], pkt->hdr.label[1], pkt->hdr.label[2], pkt->hdr.label[3],
+    sender,
+    receiver,
+    pkt->hdr.chain_no,
+    flags,
+    pkt->body.size
+  );
 }
 
+/**
+ * Transmits an packet over the LoRa antenna
+ * 
+ * @param pkt the packet to be transmitted
+ */
 void cbx_pkt_transmit(const cbx_pkt_t *pkt) {
   const uint8_t *bin = nullptr;
   uint8_t write_size = 0, packet_size = 0;

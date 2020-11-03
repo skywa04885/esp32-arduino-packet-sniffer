@@ -3,6 +3,10 @@
 
 #include "default.h"
 
+/*******************************
+ * Types
+ ******************************/
+
 typedef enum {
   WIFI_CF_MGMT,
   WIFI_CF_CONTROL,
@@ -105,10 +109,46 @@ typedef struct __attribute__ ((packed)) {
   uint8_t transmitter[6];
 } ieee80211_control_mac_header_t;
 
+/*******************************
+ * Function prototypes
+ ******************************/
+
+/**
+ * Turns an mac address into it's string representation
+ * 
+ * @param out the output buffer
+ * @param in the input mac (6 bytes)
+ */
 void ieee80211_mac_to_string(char *out, const uint8_t *in);
+
+/**
+ * Gets the string version of ethernet frame type
+ * 
+ * @param type the type number
+ */
 const char *ieee80211_get_type_string(wifi_promiscuous_pkt_type_t type);
+
+/**
+ * Gets the string version of an management frame subtype
+ * 
+ * @param type the type to be converted
+ */
 const char *ieee80211_get_mgmt_subtype_string(ieee80211_control_mgmt_subtype_t type);
+
+/**
+ * Gets the string version of an control frame subtype
+ * 
+ * @param type the type number
+ */
 const char *ieee80211_get_ctrl_subtype_string(ieee80211_control_ctr_subtype_t type);
+
+/**
+ * Logs an IEEE80211 frame to the USART line, this is used directly
+ *  in the callback of an promiscous wifi mode
+ * 
+ * @param buffer the input data buffer of frame
+ * @param type the type of the frame
+ */
 void ieee80211_log_packet(void *buffer, wifi_promiscuous_pkt_type_t type);
 
 #endif

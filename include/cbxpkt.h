@@ -4,6 +4,10 @@
 #include "default.h"
 #include "ieee80211.h"
 
+/*******************************
+ * Types
+ ******************************/
+
 typedef struct __attribute__ (( packed )) {
   unsigned encrypted : 1;       /* If the packet has been encrypted */
   unsigned relayed : 1;         /* If the packet has been relayed */
@@ -30,7 +34,22 @@ typedef struct __attribute__ (( packed )) {
   cbx_pkt_body_t body;          /* The body of the packet */
 } cbx_pkt_t;
 
+/*******************************
+ * Function prototypes
+ ******************************/
+
+/**
+ * Transmits an packet over the LoRa antenna
+ * 
+ * @param pkt the packet to be transmitted
+ */
 void cbx_pkt_transmit(const cbx_pkt_t *pkt);
+
+/**
+ * Logs packet details over the USART line
+ * 
+ * @param pkt the packet to be logged
+ */
 void cbx_pkt_log(const cbx_pkt_t *pkt);
 
 #endif
