@@ -29,6 +29,7 @@ typedef struct __attribute__ (( packed )) {
 
 typedef struct __attribute__ (( packed )) {
   uint32_t unique_id;           /* The unique identifier of the packet */
+  char api_key[18];             /* The API key */
   uint8_t size;                 /* The size of the payload */
   uint8_t *payload;             /* The body of the packet */
 } cbx_pkt_body_t;

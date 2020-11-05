@@ -15,6 +15,14 @@
  ******************************/
 
 /**
+ * Handles ESP events
+ * 
+ * @param ctx the context or something
+ * @param event the event that occured
+ */
+esp_err_t event_handler(void *ctx, system_event_t *event);
+
+/**
   * Performs all the initialization code
  */
 void setup();

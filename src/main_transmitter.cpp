@@ -14,6 +14,7 @@
  * the size is used to detect overflow and trigger transmission */
 static measurement_t g_Measurements[GLOBAL_MEASUREMENT_BUFFER_SIZE];
 static size_t g_MeasurementCounter = 0;
+static int64_t g_LastTransmissionTime = 0;
 
 /* The filter which will be applied to the promiscous wifi mode
  * this will only allow management frames */
@@ -34,6 +35,8 @@ static bool transmitting = false;
  * Transmits the measurements currently buffered
  */
 void lora_transmit_measurements() {
+  transmitting = true;
+
   /* Defines the paykoad buffer, and the packet with the default
    * packet values .. */
   uint8_t payload_buffer[128];
@@ -51,6 +54,7 @@ void lora_transmit_measurements() {
     },
     .body = {
       .unique_id = 0x00000000,
+      { .api_key = GLOBAL_API_KEY },
       .size = 0,
       .payload = payload_buffer
     }
@@ -63,19 +67,21 @@ void lora_transmit_measurements() {
     /* Checks if it is the first packet, if so just transmit, else we will
       * increment the chain id and set the chain flag */
     if (!first_packet) {
-      Serial.printf("Writing chained packet, with payload size of: %d\r\n", packet.body.size);
+      DEBUG_ONLY(Serial.printf("Writing chained packet, "
+        "with payload size of: %d\r\n", packet.body.size));
     
       /* Sets chained to true, and increments the chain ID */ 
       packet.hdr.flags.chained = 0x1;
       ++packet.hdr.chain_no;
     } else {
-      Serial.printf("Writing non-chained packet, with payload size of: %d\r\n", packet.body.size);
       first_packet = false;
+      DEBUG_ONLY(Serial.printf("Writing non-chained packet, "
+        "with payload size of: %d\r\n", packet.body.size));
     }
 
     /* Transmits the packet over lora, after which we reset
       * the body size, in order to continue with the next elements */
-    cbx_pkt_log(&packet);
+    DEBUG_ONLY(cbx_pkt_log(&packet));
     cbx_pkt_transmit(&packet);
     packet.body.size = 0;
   };
@@ -100,6 +106,11 @@ void lora_transmit_measurements() {
    * transmit it */
   if (packet.body.size > 0)
     transmit_packet();
+
+  /* Resets the transmission time */
+  g_LastTransmissionTime = esp_timer_get_time();
+  g_MeasurementCounter = 0;
+  transmitting = false;
 }
 
 /**
@@ -147,16 +158,15 @@ void promisc_packet_cb(void *buffer, wifi_promiscuous_pkt_type_t type)  {
     else return;
   }
 
-  char mac[] = {"00:00:00:00:00:00\0"};
-  ieee80211_mac_to_string(mac, m.mac);
-  Serial.printf("Unique mac: %s\r\n", mac);
+  DEBUG_ONLY({
+    char mac[] = {"00:00:00:00:00:00\0"};
+    ieee80211_mac_to_string(mac, m.mac);
+    Serial.printf("Unique mac: %s\r\n", mac);
+  });
   
   g_Measurements[g_MeasurementCounter++] = m;
   if (g_MeasurementCounter >= GLOBAL_MEASUREMENT_BUFFER_SIZE) {
-    transmitting = true;
     lora_transmit_measurements();
-    g_MeasurementCounter = 0;
-    transmitting = false;
   }
 }
 
@@ -203,6 +213,13 @@ void setup() {
  * Switches the channels
  */
 void loop() {
+  /* Checks if the transmission time was to long ago, if so do it now*/
+  if (esp_timer_get_time() > g_LastTransmissionTime + 60000000) {
+    lora_transmit_measurements();
+    return;
+  }
+
+  /* Performs the channel switching */
   if (channel > 11) channel = 1;
   else ++channel;
   esp_wifi_set_channel(channel, WIFI_SECOND_CHAN_NONE);

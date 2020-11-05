@@ -31,6 +31,7 @@ void cbx_pkt_log(const cbx_pkt_t *pkt) {
     "\t}\r\n"
     "\tBody {\r\n"
     "\t\tSize: %d\r\n"
+    "\t\tAPIKey: %s\r\n"
     "\t}\r\n"
     "}\r\n"
     , // ==========================================
@@ -39,7 +40,8 @@ void cbx_pkt_log(const cbx_pkt_t *pkt) {
     receiver,
     pkt->hdr.chain_no,
     flags,
-    pkt->body.size
+    pkt->body.size,
+    pkt->body.api_key
   );
 }
 
