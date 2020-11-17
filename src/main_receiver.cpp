@@ -6,7 +6,8 @@
 
 #ifdef COMPILE_AS_RECEIVER
 
-static volatile bool g_Connected = false;
+static bool g_Connected = false;
+static ServerConnection g_ServerConnection(GLOBAL_SERVER_IP, GLOBAL_SERVER_PORT);
 
 void http_write_macs(uint8_t *mac_addrs, uint8_t addr_count, const char *api_key) {
   if (!g_Connected) {
@@ -103,10 +104,14 @@ esp_err_t event_handler(void *ctx, system_event_t *event) {
       Serial.printf("Received IP address: %s\r\n", 
         ip4addr_ntoa(&event->event_info.got_ip.ip_info.ip));
       configTime(3600, 0, "0.nl.pool.ntp.org", "1.nl.pool.ntp.org", "2.nl.pool.ntp.org");
+      
+      g_ServerConnection.initConn();
       g_Connected = true;
       break;
     case SYSTEM_EVENT_STA_DISCONNECTED:
       esp_wifi_connect();
+
+      g_ServerConnection.closeConn();
       g_Connected = false;
       break;
     default: break;
@@ -216,7 +221,20 @@ void loop() {
   }
 
   /* Writes the measurements to the API */
-  http_write_macs(measurement_pointer, measurement_count, pkt->body.api_key);
+  #ifdef GLOBAL_DEBUG
+  int64_t start = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  Serial.println("Writing packet to server ..");
+  #endif
+  
+  if (g_ServerConnection.writePacket(packet_buffer, packet_size) < 0) esp_restart();
+
+  #ifdef GLOBAL_DEBUG
+  int64_t now = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::high_resolution_clock::now().time_since_epoch()).count();
+  Serial.printf("Packet writting in %dms\r\n", now - start);
+  #endif
+  
 
   delay(10);
 }

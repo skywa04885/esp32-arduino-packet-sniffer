@@ -11,6 +11,7 @@
 #include <Arduino.h>
 #include <lib/LoRa.h>
 
+#include <stdio.h>
 #include <esp_wifi.h>
 #include <esp_log.h>
 #include <chrono>
@@ -57,6 +58,8 @@
 #define GLOBAL_WIFI_SSID "VRV951769FD81"
 #define GLOBAL_WIFI_PASS "3mPohmrJ5GY@"
 #define GLOBAL_API_KEY "8a3d6b-efcdc1-6de"
+#define GLOBAL_SERVER_IP "192.168.2.11"
+#define GLOBAL_SERVER_PORT 8801
 #endif
 
 /*******************************

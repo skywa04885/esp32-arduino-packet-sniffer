@@ -7,6 +7,7 @@
 
 #include "default.h"
 #include "cbxpkt.h"
+#include "server_connection.h"
 
 #ifdef COMPILE_AS_RECEIVER
 
